@@ -10,14 +10,14 @@ fn main() {
             let mut buf = String::new();
             io::stdin().read_line(&mut buf).unwrap();
             let selected = buf.trim();
-            if selected == "3" {
-                break;
-            }
             stream.write_all(selected.as_bytes()).unwrap();
 
             let mut data = [0_u8; 32];
             match stream.read(&mut data) {
                 Ok(_) => {
+                    if selected == "3" {
+                        break;
+                    }
                     println!("{}", from_utf8(&data).unwrap().trim_matches(char::from(0)));
                 }
                 Err(e) => {

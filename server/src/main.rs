@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::str::from_utf8;
 use std::thread;
 
@@ -25,7 +25,7 @@ impl SmartSocket {
     }
 }
 
-fn handle_client(mut stream: TcpStream, addr: SocketAddr, mut smart_socket: SmartSocket) {
+fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
     let mut data = [0_u8; 50];
     loop {
         match stream.read(&mut data) {
@@ -41,13 +41,22 @@ fn handle_client(mut stream: TcpStream, addr: SocketAddr, mut smart_socket: Smar
                         };
                         format!("Smart socket is {}", status)
                     }
+                    "3" => {
+                        println!("{} is disconnected", stream.peer_addr().unwrap());
+                        stream.shutdown(Shutdown::Both).unwrap();
+                        break;
+                    }
                     _ => String::from("Unknown command!"),
                 };
                 data = [0_u8; 50];
-                let _ = stream.write_all(result.as_bytes()).is_ok();
+                stream.write_all(result.as_bytes()).unwrap()
             }
             Err(_) => {
-                println!("An error occurred, terminating connection with {}", addr);
+                println!(
+                    "An error occurred, terminating connection with {}",
+                    stream.peer_addr().unwrap()
+                );
+                stream.shutdown(Shutdown::Both).unwrap();
             }
         }
     }
@@ -63,9 +72,8 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                let addr = stream.peer_addr().unwrap();
-                println!("New connection: {}", addr);
-                thread::spawn(move || handle_client(stream, addr, smart_socket));
+                println!("New connection: {}", stream.peer_addr().unwrap());
+                thread::spawn(move || handle_client(stream, smart_socket));
             }
             Err(error) => {
                 println!("Error: {}", error);
