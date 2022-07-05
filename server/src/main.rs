@@ -1,5 +1,5 @@
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::str::from_utf8;
 use std::thread;
 
@@ -25,36 +25,32 @@ impl SmartSocket {
     }
 }
 
-fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
+fn handle_client(mut stream: TcpStream, addr: SocketAddr, mut smart_socket: SmartSocket) {
     let mut data = [0_u8; 50];
-    while match stream.read(&mut data) {
-        Ok(_) => {
-            let result = match from_utf8(&data).unwrap().trim_matches(char::from(0)) {
-                "1" => smart_socket.get_status(),
-                "2" => {
-                    smart_socket.toggle();
-                    let status = if smart_socket.is_enabled {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    };
-                    format!("Smart socket is {}", status)
-                }
-                _ => String::from("Unknown command!"),
-            };
-            data = [0_u8; 50];
-            stream.write_all(result.as_bytes()).unwrap();
-            true
+    loop {
+        match stream.read(&mut data) {
+            Ok(_) => {
+                let result = match from_utf8(&data).unwrap().trim_matches(char::from(0)) {
+                    "1" => smart_socket.get_status(),
+                    "2" => {
+                        smart_socket.toggle();
+                        let status = if smart_socket.is_enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        };
+                        format!("Smart socket is {}", status)
+                    }
+                    _ => String::from("Unknown command!"),
+                };
+                data = [0_u8; 50];
+                let _ = stream.write_all(result.as_bytes()).is_ok();
+            }
+            Err(_) => {
+                println!("An error occurred, terminating connection with {}", addr);
+            }
         }
-        Err(_) => {
-            println!(
-                "An error occurred, terminating connection with {}",
-                stream.peer_addr().unwrap()
-            );
-            stream.shutdown(Shutdown::Both).unwrap();
-            false
-        }
-    } {}
+    }
 }
 
 fn main() {
@@ -67,8 +63,9 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                println!("New connection: {}", stream.peer_addr().unwrap());
-                thread::spawn(move || handle_client(stream, smart_socket));
+                let addr = stream.peer_addr().unwrap();
+                println!("New connection: {}", addr);
+                thread::spawn(move || handle_client(stream, addr, smart_socket));
             }
             Err(error) => {
                 println!("Error: {}", error);
