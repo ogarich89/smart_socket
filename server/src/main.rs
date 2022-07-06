@@ -26,11 +26,11 @@ impl SmartSocket {
 }
 
 fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
-    let mut data = [0_u8; 50];
+    let mut data = [0_u8; 1];
     loop {
-        match stream.read(&mut data) {
+        match stream.read_exact(&mut data) {
             Ok(_) => {
-                let result = match from_utf8(&data).unwrap().trim_matches(char::from(0)) {
+                let result = match from_utf8(&data).unwrap() {
                     "1" => smart_socket.get_status(),
                     "2" => {
                         smart_socket.toggle();
@@ -48,7 +48,6 @@ fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
                     }
                     _ => String::from("Unknown command!"),
                 };
-                data = [0_u8; 50];
                 stream.write_all(result.as_bytes()).unwrap()
             }
             Err(_) => {
