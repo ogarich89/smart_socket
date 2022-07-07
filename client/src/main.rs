@@ -13,7 +13,7 @@ fn main() {
             stream.write_all(selected.as_bytes()).unwrap();
 
             let mut data = [0_u8; 32];
-            match stream.read(&mut data) {
+            match stream.read_exact(&mut data) {
                 Ok(_) => {
                     if selected == "3" {
                         break;

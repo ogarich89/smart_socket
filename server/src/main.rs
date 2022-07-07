@@ -48,7 +48,9 @@ fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
                     }
                     _ => String::from("Unknown command!"),
                 };
-                stream.write_all(result.as_bytes()).unwrap()
+                let mut buf = result.into_bytes();
+                buf.resize(32, 0);
+                stream.write_all(buf.as_slice()).unwrap()
             }
             Err(_) => {
                 println!(
