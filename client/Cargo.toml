@@ -2,3 +2,6 @@
 name = "client"
 version = "0.1.0"
 edition = "2021"
+
+[dependencies]
+tokio = { version = "1.19.2", features = ["net", "macros", "rt-multi-thread", "io-util", "sync"] }

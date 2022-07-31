@@ -1,7 +1,10 @@
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
 use std::str::from_utf8;
-use std::thread;
+use std::sync::Arc;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::Mutex,
+};
 
 #[derive(Clone, Copy)]
 struct SmartSocket {
@@ -25,16 +28,16 @@ impl SmartSocket {
     }
 }
 
-fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
+async fn handle_client(mut stream: TcpStream, smart_socket: Arc<Mutex<SmartSocket>>) {
     let mut data = [0_u8; 1];
     loop {
-        match stream.read_exact(&mut data) {
+        match stream.read_exact(&mut data).await {
             Ok(_) => {
                 let result = match from_utf8(&data).unwrap() {
-                    "1" => smart_socket.get_status(),
+                    "1" => smart_socket.lock().await.get_status(),
                     "2" => {
-                        smart_socket.toggle();
-                        let status = if smart_socket.is_enabled {
+                        smart_socket.lock().await.toggle();
+                        let status = if smart_socket.lock().await.is_enabled {
                             "enabled"
                         } else {
                             "disabled"
@@ -43,42 +46,41 @@ fn handle_client(mut stream: TcpStream, mut smart_socket: SmartSocket) {
                     }
                     "3" => {
                         println!("{} is disconnected", stream.peer_addr().unwrap());
-                        stream.shutdown(Shutdown::Both).unwrap();
+                        stream.shutdown().await.unwrap();
                         break;
                     }
                     _ => String::from("Unknown command!"),
                 };
                 let mut buf = result.into_bytes();
                 buf.resize(32, 0);
-                stream.write_all(buf.as_slice()).unwrap()
+                stream.write_all(buf.as_slice()).await.unwrap()
             }
             Err(_) => {
                 println!(
                     "An error occurred, terminating connection with {}",
                     stream.peer_addr().unwrap()
                 );
-                stream.shutdown(Shutdown::Both).unwrap();
+                stream.shutdown().await.unwrap();
             }
         }
     }
 }
 
-fn main() {
-    let smart_socket = SmartSocket {
+#[tokio::main]
+async fn main() {
+    let smart_socket = Arc::new(Mutex::new(SmartSocket {
         is_enabled: false,
         voltage: 0,
-    };
-    let listener = TcpListener::bind("127.0.0.1:3000").unwrap();
+    }));
+    let listener = TcpListener::bind("127.0.0.1:3000")
+        .await
+        .expect("Can't bind tcp listener");
     println!("Server listening on port 3000");
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                println!("New connection: {}", stream.peer_addr().unwrap());
-                thread::spawn(move || handle_client(stream, smart_socket));
-            }
-            Err(error) => {
-                println!("Error: {}", error);
-            }
-        }
+
+    while let Ok((stream, addr)) = listener.accept().await {
+        println!("New connection: {}", addr);
+
+        let smart_socket = smart_socket.clone();
+        tokio::spawn(async move { handle_client(stream, smart_socket).await });
     }
 }
